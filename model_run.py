@@ -41,7 +41,7 @@ results = []
 detailed_logs = []
 
 for dataset_name, path in datasets.items():
-    print(f"\n📂 Data Set: {dataset_name}")
+    print(f"\nData Set: {dataset_name}")
     X_train = pd.read_csv(os.path.join(path, "X_train.csv"))
     y_train = pd.read_csv(os.path.join(path, "y_train.csv")).squeeze()
     X_test = pd.read_csv(os.path.join(path, "X_test.csv"))
@@ -52,7 +52,7 @@ for dataset_name, path in datasets.items():
         df.fillna(0, inplace=True)
 
     for model_name, model in models.items():
-        print(f"\n🚀 Model: {model_name} — Data Set: {dataset_name}")
+        print(f"\nModel: {model_name} — Data Set: {dataset_name}")
         start_time = time.time()
 
         try:
@@ -88,7 +88,7 @@ for dataset_name, path in datasets.items():
             f1 = f1_score(y_test, y_pred)
             roc = roc_auc_score(y_test, y_pred)
 
-            print(f"✅ Accuracy: {acc:.4f} — Precision: {prec:.4f} — Recall: {rec:.4f} — F1: {f1:.4f} — ROC-AUC: {roc:.4f}")
+            print(f"Accuracy: {acc:.4f} — Precision: {prec:.4f} — Recall: {rec:.4f} — F1: {f1:.4f} — ROC-AUC: {roc:.4f}")
             print("Confusion Matrix:")
             print(confusion_matrix(y_test, y_pred))
 
@@ -104,7 +104,7 @@ for dataset_name, path in datasets.items():
             })
 
             # === SHAP Açıklamaları ===
-            print("🔍 SHAP açıklamaları hesaplanıyor...")
+            print("SHAP açıklamaları hesaplanıyor...")
             try:
                 explainer = shap.TreeExplainer(model)
                 shap_values = explainer.shap_values(X_test.iloc[:100])
@@ -122,12 +122,12 @@ for dataset_name, path in datasets.items():
 
                 shap_output_path = os.path.join(output_dir, f"shap_values_{dataset_name}_{model_name}.csv")
                 shap_df.to_csv(shap_output_path, index=False)
-                print(f"📊 SHAP açıklamaları kaydedildi: {shap_output_path}")
+                print(f"SHAP açıklamaları kaydedildi: {shap_output_path}")
             except Exception as shap_e:
-                print(f"⚠️ SHAP açıklamaları hesaplanamadı: {shap_e}")
+                print(f"SHAP açıklamaları hesaplanamadı: {shap_e}")
 
             # === LIME Açıklamaları ===
-            print("🔍 LIME açıklamaları hesaplanıyor...")
+            print("LIME açıklamaları hesaplanıyor...")
             try:
                 lime_samples = X_test.iloc[:100].copy()
                 lime_explainer = LimeTabularExplainer(
@@ -157,23 +157,23 @@ for dataset_name, path in datasets.items():
                 lime_df = pd.DataFrame(lime_records)
                 lime_output_path = os.path.join(output_dir, f"lime_values_{dataset_name}_{model_name}.csv")
                 lime_df.to_csv(lime_output_path, index=False)
-                print(f"📊 LIME açıklamaları kaydedildi: {lime_output_path}")
+                print(f"LIME açıklamaları kaydedildi: {lime_output_path}")
 
             except Exception as lime_e:
-                print(f"⚠️ LIME açıklamaları hesaplanamadı: {lime_e}")
+                print(f"LIME açıklamaları hesaplanamadı: {lime_e}")
 
         except Exception as e:
-            print(f"❌ HATA: {model_name} - {dataset_name} çalıştırılamadı. Sebep: {e}")
+            print(f"HATA: {model_name} - {dataset_name} çalıştırılamadı. Sebep: {e}")
 
 # === Sonuçları kaydet ===
 results_csv = os.path.join(output_dir, "machine_learning_results.csv")
 pd.DataFrame(results).to_csv(results_csv, index=False)
-print(f"\n📁 Sonuçlar kaydedildi: {results_csv}")
+print(f"\nSonuçlar kaydedildi: {results_csv}")
 
 if detailed_logs:
     log_csv = os.path.join(output_dir, "machine_learning_training_log.csv")
     pd.DataFrame(detailed_logs).to_csv(log_csv, index=False)
-    print(f"📁 Epoch logları kaydedildi: {log_csv}")
+    print(f"Epoch logları kaydedildi: {log_csv}")
 
-print("\n📊 Toplu Sonuçlar:")
+print("\nToplu Sonuçlar:")
 print(pd.DataFrame(results).to_string(index=False))

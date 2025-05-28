@@ -38,13 +38,30 @@ def explain_with_shap(model, X_sample, dataset, model_name, feature_names, resha
     try:
         print("XAI: SHAP açıklamaları hesaplanıyor...")
         X_sample = np.array(X_sample, dtype=np.float32)
+        
+        import shap
+        
+        # SHAP için örnekleri düzleştir, sonra model için tekrar şekillendir
         def pred_fn(x):
             x_pred = reshape_fn(x) if reshape_fn else x
             preds = model.predict(x_pred, verbose=0).flatten()
             return preds
-        explainer = PermutationExplainer(pred_fn, X_sample)
-        shap_values = explainer(X_sample)
-        shap_df = pd.DataFrame(shap_values.values, columns=feature_names)
+        
+        # SHAP Kernel Explainer için 2D dizi zorunlu
+        if len(X_sample.shape) > 2:
+            X_shap = X_sample.reshape((X_sample.shape[0], -1))
+        else:
+            X_shap = X_sample
+
+        explainer = shap.KernelExplainer(pred_fn, X_shap[:20])
+        shap_values = explainer.shap_values(X_shap[:100])
+
+        if isinstance(shap_values, list):
+            shap_array = shap_values[0]
+        else:
+            shap_array = shap_values
+
+        shap_df = pd.DataFrame(shap_array, columns=feature_names)
         shap_df.insert(0, "SampleIndex", shap_df.index)
         shap_df.to_csv(os.path.join(output_dir, f"shap_{dataset}_{model_name}.csv"), index=False)
         print(f"XAI: SHAP çıktısı kaydedildi → shap_{dataset}_{model_name}.csv")
@@ -55,26 +72,35 @@ def explain_with_shap(model, X_sample, dataset, model_name, feature_names, resha
 def explain_with_lime(model, X_train, X_sample, dataset, model_name, feature_names, reshape_fn=None):
     try:
         print("XAI: LIME açıklamaları hesaplanıyor...")
+        # LIME için girişler her zaman 2D olmalı
+        X_train_lime = X_train if len(X_train.shape) == 2 else X_train.reshape((X_train.shape[0], -1))
+        X_sample_lime = X_sample if len(X_sample.shape) == 2 else X_sample.reshape((X_sample.shape[0], -1))
+
         explainer = LimeTabularExplainer(
-            training_data=np.array(X_train),
+            training_data=X_train_lime[:1000],
             feature_names=feature_names,
             class_names=["Class 0", "Class 1"],
             mode="classification"
         )
         lime_records = []
-        for i in range(min(100, X_sample.shape[0])):
-            row = X_sample[i]
+        for i in range(min(100, X_sample_lime.shape[0])):
+            row = X_sample_lime[i]
+
             def pred_fn(x):
-                x_r = reshape_fn(x) if reshape_fn else x
-                preds = model.predict(x_r, verbose=0).flatten()
+                x_pred = reshape_fn(x) if reshape_fn else x
+                preds = model.predict(x_pred, verbose=0).flatten()
                 return np.column_stack([1 - preds, preds])
+
             exp = explainer.explain_instance(data_row=row, predict_fn=pred_fn, num_features=10)
             for feature, weight in exp.as_list():
                 lime_records.append({"SampleIndex": i, "Feature": feature, "Weight": weight})
+
         pd.DataFrame(lime_records).to_csv(os.path.join(output_dir, f"lime_{dataset}_{model_name}.csv"), index=False)
         print(f"XAI: LIME çıktısı kaydedildi → lime_{dataset}_{model_name}.csv")
     except Exception as e:
         print(f"XAI hatası (LIME): {e}")
+
+
 
 # === Değerlendirme ===
 def evaluate_model(model, X_test, y_test, name, dataset, history, duration, X_train=None, feature_names=None, reshape_fn=None):
@@ -118,7 +144,7 @@ for dataset_name, path in datasets.items():
     X_test = scaler.transform(X_test_df.astype(np.float32))
     input_dim = X_train.shape[1]
 
-    # === CNN ===
+    #=== CNN ===
     X_train_cnn = np.expand_dims(X_train, axis=2)
     X_test_cnn = np.expand_dims(X_test, axis=2)
     cnn = Sequential([
@@ -131,10 +157,23 @@ for dataset_name, path in datasets.items():
     ])
     cnn.compile(optimizer=Adam(), loss='binary_crossentropy', metrics=['accuracy'])
     start = time.time()
-    hist = cnn.fit(X_train_cnn, y_train, epochs=1, batch_size=64, verbose=1)
-    evaluate_model(cnn, X_test_cnn, y_test, "CNN", dataset_name, hist, time.time() - start, X_train, feature_names, lambda x: np.expand_dims(x, axis=2))
+    print(f"\nCNN modeli eğitiliyor ({dataset_name}) - Epoch sayısı: 5")
+    hist = cnn.fit(X_train_cnn, y_train, epochs=5, batch_size=64, verbose=1)
+    evaluate_model(
+    cnn, 
+    X_test_cnn, 
+    y_test, 
+    "CNN", 
+    dataset_name, 
+    hist, 
+    time.time() - start, 
+    X_train, 
+    feature_names, 
+    lambda x: np.expand_dims(x, axis=2)
+)
 
-    # === LSTM ===
+
+    #=== LSTM ===
     X_train_lstm = X_train.reshape((X_train.shape[0], 1, input_dim))
     X_test_lstm = X_test.reshape((X_test.shape[0], 1, input_dim))
     lstm = Sequential([
@@ -144,8 +183,21 @@ for dataset_name, path in datasets.items():
     ])
     lstm.compile(optimizer=Adam(), loss='binary_crossentropy', metrics=['accuracy'])
     start = time.time()
-    hist = lstm.fit(X_train_lstm, y_train, epochs=1, batch_size=64, verbose=1)
-    evaluate_model(lstm, X_test_lstm, y_test, "LSTM", dataset_name, hist, time.time() - start, X_train, feature_names, lambda x: x.reshape((x.shape[0], 1, input_dim)))
+    print(f"\nLSTM modeli eğitiliyor ({dataset_name}) - Epoch sayısı: 5")
+    hist = lstm.fit(X_train_lstm, y_train, epochs=5, batch_size=64, verbose=1)
+    evaluate_model(
+    lstm, 
+    X_test_lstm, 
+    y_test, 
+    "LSTM", 
+    dataset_name, 
+    hist, 
+    time.time() - start, 
+    X_train, 
+    feature_names, 
+    lambda x: x.reshape((x.shape[0], 1, input_dim))
+)
+
 
     # === Autoencoder + Dense ===
     with tf.device('/CPU:0'):
@@ -156,7 +208,7 @@ for dataset_name, path in datasets.items():
         decoded = Dense(input_dim, activation='linear')(decoded)
         autoencoder = Model(inputs=input_layer, outputs=decoded)
         autoencoder.compile(optimizer=Adam(), loss='mse')
-        autoencoder.fit(X_train, X_train, epochs=1, batch_size=32, verbose=1)
+        autoencoder.fit(X_train, X_train, epochs=5, batch_size=32, verbose=1)
         encoded_train = autoencoder.predict(X_train)
         encoded_test = autoencoder.predict(X_test)
 
@@ -167,7 +219,8 @@ for dataset_name, path in datasets.items():
     ])
     ae_model.compile(optimizer=Adam(), loss='binary_crossentropy', metrics=['accuracy'])
     start = time.time()
-    hist = ae_model.fit(encoded_train, y_train, epochs=1, batch_size=32, verbose=1)
+    print(f"\nAutoencoder + Dense modeli eğitiliyor ({dataset_name}) - Epoch sayısı: 5")
+    hist = ae_model.fit(encoded_train, y_train, epochs=5, batch_size=32, verbose=1)
     evaluate_model(ae_model, encoded_test, y_test, "Autoencoder+Dense", dataset_name, hist, time.time() - start, encoded_train, feature_names)
 
     # === MLP ===
@@ -180,7 +233,8 @@ for dataset_name, path in datasets.items():
     ])
     mlp.compile(optimizer=Adam(), loss='binary_crossentropy', metrics=['accuracy'])
     start = time.time()
-    hist = mlp.fit(X_train, y_train, epochs=1, batch_size=64, verbose=1)
+    print(f"\nMLP + Dense modeli eğitiliyor ({dataset_name}) - Epoch sayısı: 5")
+    hist = mlp.fit(X_train, y_train, epochs=5, batch_size=64, verbose=1)
     evaluate_model(mlp, X_test, y_test, "MLP", dataset_name, hist, time.time() - start, X_train, feature_names)
 
 # === Sonuçları Kaydet ===
